@@ -1,0 +1,46 @@
+Termit
+==============
+
+Library for serializing Erlang terms to signed encrypted binaries and reliably deserializing them back.
+
+Usage
+--------------
+
+A typical use case is to provide means to keep secrets put in public domain, e.g. secure cookies.
+
+```erlang
+Term = {this, is, an, [erlang, <<"term">>]}.
+Cookie = termit:encode_base64(Term, <<"cekpet">>).
+
+% time-to-live is 1000 seconds =:= secret valid no more than 1000 seconds
+{ok, Term} = termit:decode_base64(Cookie, <<"cekpet">>, 1000).
+% time-to-live is 0 seconds =:= expired
+{error, expired} = termit:decode_base64(Cookie, <<"cekpet">>, 0).
+
+% check whether secret was not forged
+{error, forged} = termit:decode_base64(<<Cookie/binary, "1">>, <<"cekpet">>, 1000).
+{error, forged} = termit:decode_base64(Cookie, <<"secret">>, 1000).
+{error, forged} = termit:decode_base64(undefined, <<"cekpet">>, 1000).
+```
+
+[License](termit/blob/master/LICENSE.txt)
+-------
+
+Copyright (c) 2013 Vladimir Dronnikov <dronnikov@gmail.com>
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of
+this software and associated documentation files (the "Software"), to deal in
+the Software without restriction, including without limitation the rights to
+use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software is furnished to do so,
+subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
