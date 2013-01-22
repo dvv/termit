@@ -19,4 +19,4 @@ encode_test(_Config) ->
   {ok, Term} = termit:decode_base64(
       termit:encode_base64(Term, Secret), Secret, 1),
   {error, expired} = termit:decode_base64(
-      termit:encode_base64(Term, Secret), Secret, 0).
+      termit:encode_base64(Term, Secret), Secret, -1).

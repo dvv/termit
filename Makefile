@@ -16,7 +16,7 @@ clean:
 check:
 	rebar eunit skip_deps=true
 
-test:
+test: deps compile check
 	#rebar ct
 	mkdir -p .ct
 	ct_run -dir test -logdir .ct -pa ebin

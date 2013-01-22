@@ -23,10 +23,10 @@
 encode(Term, Secret) ->
   Bin = term_to_binary(Term),
   Enc = encrypt(Bin, Secret),
-  {MegaSecs, Secs, _} = erlang:now(),
-  Time = list_to_binary(integer_to_list(MegaSecs * 1000000 + Secs)),
+  Time = list_to_binary(integer_to_list(timestamp())),
+  TimeSize = byte_size(Time),
   Sig = sign(<<Time/binary, Enc/binary>>, Secret),
-  <<Sig/binary, Time/binary, Enc/binary>>.
+  <<Sig/binary, TimeSize, Time/binary, Enc/binary>>.
 
 %%
 %% -----------------------------------------------------------------------------
@@ -43,9 +43,7 @@ encode(Term, Secret) ->
     Ttl :: non_neg_integer()
   ) -> {ok, Term :: any()} | {error, Reason :: atom()}.
 
-%% @todo how do we know time is 10 octets?
-
-decode(<<Sig:32/binary, Time:10/binary, Enc/binary>>, Secret, Ttl) ->
+decode(<<Sig:32/binary, TimeSize, Time:TimeSize/binary, Enc/binary>>, Secret, Ttl) ->
   case sign(<<Time/binary, Enc/binary>>, Secret) of
       % signature ok?
       Sig ->
@@ -54,8 +52,7 @@ decode(<<Sig:32/binary, Time:10/binary, Enc/binary>>, Secret, Ttl) ->
         try binary_to_term(Bin, [safe]) of
             Term ->
               % not yet expired?
-              {MegaSecs, Secs, _} = erlang:now(),
-              Now = MegaSecs * 1000000 + Secs,
+              Now = timestamp(),
               Expires = list_to_integer(binary_to_list(Time)) + Ttl,
               case Expires > Now of
                   true ->
@@ -76,7 +73,19 @@ decode(Bin, _, _) when is_binary(Bin) ->
 
 %%
 %% -----------------------------------------------------------------------------
-%% @doc Get 32-byte SHA1 sum of Data salted with Secret.
+%% @doc Get current OS time as unsigned integer.
+%% -----------------------------------------------------------------------------
+%%
+
+-spec timestamp() -> non_neg_integer().
+
+timestamp() ->
+  {MegaSecs, Secs, _} = os:timestamp(),
+  MegaSecs * 1000000 + Secs.
+
+%%
+%% -----------------------------------------------------------------------------
+%% @doc Get 32-octet hash of Data salted with Secret.
 %% -----------------------------------------------------------------------------
 %%
 
@@ -137,8 +146,10 @@ encrypt_test() ->
   Secret = <<"Make It Elegant">>,
   Bin = <<"Transire Benefaciendo">>,
   ?assertEqual(Bin, uncrypt(encrypt(Bin, Secret), Secret)),
-  ?assert(Bin =/= uncrypt(encrypt(Bin, Secret), <<Secret/binary, "1">>)),
-  ?assert(Bin =/= uncrypt(encrypt(Bin, <<Secret/binary, "1">>), Secret)).
+  ?assertNotEqual(Bin, uncrypt(encrypt(Bin, Secret), <<Secret/binary, "1">>)),
+  ?assertNotEqual(Bin, uncrypt(encrypt(Bin, Secret), <<"0", Secret/binary>>)),
+  ?assertNotEqual(Bin, uncrypt(encrypt(Bin, <<Secret/binary, "1">>), Secret)),
+  ?assertNotEqual(Bin, uncrypt(encrypt(Bin, <<"0", Secret/binary>>), Secret)).
 
 smoke_test() ->
   Term = {a, b, c, [d, "e", <<"foo">>]},
@@ -150,13 +161,14 @@ smoke_test() ->
   ?assertEqual({error, expired}, decode(encode(Term, Secret), Secret, 0)),
   % forged data
   ?assertEqual({error, forged}, decode(<<"1">>, Secret, 1)),
+  ?assertEqual({error, forged}, decode(<<"0", Enc/binary>>, Secret, 1)),
   ?assertEqual({error, forged}, decode(<<Enc/binary, "1">>, Secret, 1)).
 
-encode_test(_Config) ->
+encode64_test() ->
   Term = {a, b, c, [d, "e", <<"foo">>]},
   Secret = <<"TopSecRet">>,
-  undefined = decode_base64(undefined, a, b),
-  {ok, Term} = decode_base64(encode_base64(Term, Secret), Secret, 1),
-  {error, expired} = decode_base64(encode_base64(Term, Secret), Secret, 0).
+  ?assertEqual({error, forged}, decode_base64(undefined, a, b)),
+  ?assertEqual({ok, Term}, decode_base64(encode_base64(Term, Secret), Secret, 1)),
+  ?assertEqual({error, expired}, decode_base64(encode_base64(Term, Secret), Secret, 0)).
 
 -endif.
