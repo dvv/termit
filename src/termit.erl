@@ -131,7 +131,13 @@ decode_base64(undefined, _, _) ->
   {error, forged};
 
 decode_base64(Bin, Secret, Ttl) when is_binary(Bin) ->
-  decode(base64:decode(Bin), Secret, Ttl).
+  % do not rely cookie was set by us -- it may be not a valid base64
+  try base64:decode(Bin) of
+    Decoded ->
+      decode(Decoded, Secret, Ttl)
+  catch _:_ ->
+    {error, forged}
+  end.
 
 %%
 %% -----------------------------------------------------------------------------
@@ -170,5 +176,8 @@ encode64_test() ->
   ?assertEqual({error, forged}, decode_base64(undefined, a, b)),
   ?assertEqual({ok, Term}, decode_base64(encode_base64(Term, Secret), Secret, 1)),
   ?assertEqual({error, expired}, decode_base64(encode_base64(Term, Secret), Secret, 0)).
+
+decode64_test() ->
+  ?assertEqual({error, forged}, decode_base64(<<"%3A">>, a, b)).
 
 -endif.
