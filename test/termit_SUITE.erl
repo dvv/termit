@@ -17,6 +17,7 @@ encode_test(_Config) ->
   Secret = <<"TopSecRet">>,
   {error, forged} = termit:decode_base64(undefined, a, b),
   {ok, Term} = termit:decode_base64(
-      termit:encode_base64(Term, Secret), Secret, 1),
-  {error, expired} = termit:decode_base64(
-      termit:encode_base64(Term, Secret), Secret, -1).
+      termit:encode_base64(Term, Secret, 1), Secret, 1),
+  Enc = termit:encode_base64(Term, Secret, 1),
+  timer:sleep(2000),
+  {error, expired} = termit:decode_base64(Enc, Secret, 1).

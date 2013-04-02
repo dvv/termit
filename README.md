@@ -10,17 +10,22 @@ A typical use case is to provide means to keep secrets put in public domain, e.g
 
 ```erlang
 Term = {this, is, an, [erlang, <<"term">>]}.
-Cookie = termit:encode_base64(Term, <<"cekpet">>).
+% time-to-live is 10 seconds =:= secret valid no more than 10 seconds
+Cookie = termit:encode_base64(Term, <<"cekpet">>, 10).
 
-% time-to-live is 1000 seconds =:= secret valid no more than 1000 seconds
-{ok, Term} = termit:decode_base64(Cookie, <<"cekpet">>, 1000).
-% time-to-live is 0 seconds =:= expired
-{error, expired} = termit:decode_base64(Cookie, <<"cekpet">>, 0).
+% secret is alive
+{ok, Term} = termit:decode_base64(Cookie, <<"cekpet">>, 10).
+
+% secret's time-to-live must fit
+{error, forged} = termit:decode_base64(Cookie, <<"cekpet">>, 11).
+
+% after 10 seconds elapsed
+{error, expired} = termit:decode_base64(Cookie, <<"cekpet">>, 10).
 
 % check whether secret was not forged
-{error, forged} = termit:decode_base64(<<Cookie/binary, "1">>, <<"cekpet">>, 1000).
-{error, forged} = termit:decode_base64(Cookie, <<"secret">>, 1000).
-{error, forged} = termit:decode_base64(undefined, <<"cekpet">>, 1000).
+{error, forged} = termit:decode_base64(<<Cookie/binary, "1">>, <<"cekpet">>, 10).
+{error, forged} = termit:decode_base64(Cookie, <<"secret">>, 10).
+{error, forged} = termit:decode_base64(undefined, <<"cekpet">>, 10).
 ```
 
 [License](termit/blob/master/LICENSE.txt)

@@ -1,14 +1,14 @@
 %%
 %% @doc Serialize an Erlang term to signed encrypted binary and
-%% deserialize it back ensuring it's not been forged.
+%% deserialize it back ensuring it's not been forged or expired.
 %%
 
 -module(termit).
 -author('Vladimir Dronnikov <dronnikov@gmail.com>').
 
 -export([
-    encode/2, decode/3,
-    encode_base64/2, decode_base64/3
+    encode/3, decode/3,
+    encode_base64/3, decode_base64/3
   ]).
 
 %%
@@ -18,54 +18,61 @@
 %% -----------------------------------------------------------------------------
 %%
 
--spec encode(Term :: any(), Secret :: binary()) -> Cipher :: binary().
+-spec encode(
+    Term :: any(),
+    Secret :: binary(),
+    Ttl :: non_neg_integer()) ->
+  Cipher :: binary().
 
-encode(Term, Secret) ->
-  Bin = term_to_binary(Term),
-  Enc = encrypt(Bin, Secret),
-  Time = list_to_binary(integer_to_list(timestamp())),
-  TimeSize = byte_size(Time),
-  Sig = sign(<<Time/binary, Enc/binary>>, Secret),
-  <<Sig/binary, TimeSize, Time/binary, Enc/binary>>.
+encode(Term, Secret, Ttl) ->
+  ExpiresAt = timestamp(Ttl),
+  ExpiresAtBin = list_to_binary(integer_to_list(ExpiresAt)),
+  Key = key(Secret, Ttl),
+  Enc = encrypt(term_to_binary(Term), Key),
+  Sig = sign(<< ExpiresAtBin/binary, Key/binary, Enc/binary >>, Secret),
+  << Sig/binary, ExpiresAt:32/integer, Enc/binary >>.
 
 %%
 %% -----------------------------------------------------------------------------
-%% @doc Given a result of encode/2, i.e. a signed encrypted binary,
+%% @doc Given a result of encode/3, i.e. a signed encrypted binary,
 %% check the signature, uncrypt and deserialize into original term.
 %% Check it timestamp encoded into the data is not older than Ttl.
-%% Return {ok, Term} or {error, Reason}.
 %% -----------------------------------------------------------------------------
 %%
 
 -spec decode(
     Cipher :: binary(),
     Secret :: binary(),
-    Ttl :: non_neg_integer()
-  ) -> {ok, Term :: any()} | {error, Reason :: atom()}.
+    Ttl :: non_neg_integer()) ->
+  {ok, Term :: any()} |
+  {error, expired} |
+  {error, forged} |
+  {error, badarg}.
 
-decode(<<Sig:32/binary, TimeSize, Time:TimeSize/binary, Enc/binary>>, Secret, Ttl) ->
-  case sign(<<Time/binary, Enc/binary>>, Secret) of
-      % signature ok?
-      Sig ->
-        Bin = uncrypt(Enc, Secret),
-        % deserialize
-        try binary_to_term(Bin, [safe]) of
-            Term ->
-              % not yet expired?
-              Now = timestamp(),
-              Expires = list_to_integer(binary_to_list(Time)) + Ttl,
-              case Expires > Now of
-                  true ->
-                    {ok, Term};
-                  false ->
-                    {error, expired}
-                end
-          catch _:_ ->
-              {error, badarg}
-          end;
-      _ ->
-        {error, forged}
-    end;
+decode(<< Sig:32/binary, ExpiresAt:32/integer, Enc/binary >>, Secret, Ttl) ->
+  ExpiresAtBin = list_to_binary(integer_to_list(ExpiresAt)),
+  Key = key(Secret, Ttl),
+  % @todo constant time comparison
+  case sign(<< ExpiresAtBin/binary, Key/binary, Enc/binary >>, Secret) of
+    % signature ok?
+    Sig ->
+      Bin = uncrypt(Enc, Key),
+      % deserialize
+      try binary_to_term(Bin, [safe]) of
+        Term ->
+          % not yet expired?
+          case ExpiresAt > timestamp(0) of
+            true ->
+              {ok, Term};
+            false ->
+              {error, expired}
+          end
+      catch _:_ ->
+        {error, badarg}
+      end;
+    _ ->
+      {error, forged}
+  end;
 
 %% N.B. unmatched binaries are forged
 decode(Bin, _, _) when is_binary(Bin) ->
@@ -73,15 +80,32 @@ decode(Bin, _, _) when is_binary(Bin) ->
 
 %%
 %% -----------------------------------------------------------------------------
-%% @doc Get current OS time as unsigned integer.
+%% @doc Get current OS time plus Delta in seconds as unsigned integer.
 %% -----------------------------------------------------------------------------
 %%
 
--spec timestamp() -> non_neg_integer().
+-spec timestamp(
+    Delta :: integer()) ->
+  non_neg_integer().
 
-timestamp() ->
+timestamp(Delta) when is_integer(Delta) ->
   {MegaSecs, Secs, _} = os:timestamp(),
-  MegaSecs * 1000000 + Secs.
+  MegaSecs * 1000000 + Secs + Delta.
+
+
+%%
+%% -----------------------------------------------------------------------------
+%% @doc Get 16-octet binary from given arbitrary Secret and integer TTL.
+%% -----------------------------------------------------------------------------
+%%
+
+-spec key(
+    Secret :: binary(),
+    Ttl :: non_neg_integer()) ->
+  MAC16 :: binary().
+
+key(Secret, Ttl) ->
+  crypto:md5_mac(Secret, integer_to_list(Ttl)).
 
 %%
 %% -----------------------------------------------------------------------------
@@ -89,7 +113,10 @@ timestamp() ->
 %% -----------------------------------------------------------------------------
 %%
 
--spec sign(binary(), binary()) -> binary().
+-spec sign(
+    Data :: binary(),
+    Secret :: binary()) ->
+  Signature32 :: binary().
 
 sign(Data, Secret) ->
   crypto:sha256([Data, Secret]).
@@ -100,11 +127,14 @@ sign(Data, Secret) ->
 %% -----------------------------------------------------------------------------
 %%
 
--spec encrypt(binary(), binary()) -> binary().
+-spec encrypt(
+    Data :: binary(),
+    Key :: binary()) ->
+  Cipher :: binary().
 
-encrypt(Bin, Secret) ->
-  <<Key:16/binary, IV:16/binary>> = crypto:sha256(Secret),
-  crypto:aes_cfb_128_encrypt(Key, IV, Bin).
+encrypt(Data, Key) ->
+  IV = crypto:rand_bytes(16),
+  << IV/binary, (crypto:aes_cfb_128_encrypt(Key, IV, Data))/binary >>.
 
 %%
 %% -----------------------------------------------------------------------------
@@ -112,11 +142,13 @@ encrypt(Bin, Secret) ->
 %% -----------------------------------------------------------------------------
 %%
 
--spec uncrypt(binary(), binary()) -> binary().
+-spec uncrypt(
+    Cipher :: binary(),
+    Key :: binary()) ->
+  Uncrypted :: binary().
 
-uncrypt(Bin, Secret) ->
-  <<Key:16/binary, IV:16/binary>> = crypto:sha256(Secret),
-  crypto:aes_cfb_128_decrypt(Key, IV, Bin).
+uncrypt(<< IV:16/binary, Data/binary >>, Key) ->
+  crypto:aes_cfb_128_decrypt(Key, IV, Data).
 
 %%
 %% -----------------------------------------------------------------------------
@@ -124,14 +156,13 @@ uncrypt(Bin, Secret) ->
 %% -----------------------------------------------------------------------------
 %%
 
-encode_base64(Term, Secret) ->
-  base64:encode(encode(Term, Secret)).
+encode_base64(Term, Secret, Ttl) ->
+  base64:encode(encode(Term, Secret, Ttl)).
 
 decode_base64(undefined, _, _) ->
   {error, forged};
 
 decode_base64(Bin, Secret, Ttl) when is_binary(Bin) ->
-  % do not rely cookie was set by us -- it may be not a valid base64
   try base64:decode(Bin) of
     Decoded ->
       decode(Decoded, Secret, Ttl)
@@ -149,33 +180,36 @@ decode_base64(Bin, Secret, Ttl) when is_binary(Bin) ->
 -include_lib("eunit/include/eunit.hrl").
 
 encrypt_test() ->
-  Secret = <<"Make It Elegant">>,
+  Secret = crypto:md5_mac(<<"Make It Elegant">>, []),
+  << Secret15:15/binary, _/binary >> = Secret,
   Bin = <<"Transire Benefaciendo">>,
   ?assertEqual(Bin, uncrypt(encrypt(Bin, Secret), Secret)),
-  ?assertNotEqual(Bin, uncrypt(encrypt(Bin, Secret), <<Secret/binary, "1">>)),
-  ?assertNotEqual(Bin, uncrypt(encrypt(Bin, Secret), <<"0", Secret/binary>>)),
-  ?assertNotEqual(Bin, uncrypt(encrypt(Bin, <<Secret/binary, "1">>), Secret)),
-  ?assertNotEqual(Bin, uncrypt(encrypt(Bin, <<"0", Secret/binary>>), Secret)).
+  ?assertNotEqual(Bin, uncrypt(encrypt(Bin, Secret), <<Secret15/binary, "1">>)),
+  ?assertNotEqual(Bin, uncrypt(encrypt(Bin, Secret), <<"0", Secret15/binary>>)),
+  ?assertNotEqual(Bin, uncrypt(encrypt(Bin, <<Secret15/binary, "1">>), Secret)),
+  ?assertNotEqual(Bin, uncrypt(encrypt(Bin, <<"0", Secret15/binary>>), Secret)).
 
 smoke_test() ->
   Term = {a, b, c, [d, "e", <<"foo">>]},
   Secret = <<"TopSecRet">>,
-  Enc = encode(Term, Secret),
+  Enc = encode(Term, Secret, 1),
   % decode encoded term with valid time to live
   ?assertEqual({ok, Term}, decode(Enc, Secret, 1)),
-  % expired data
-  ?assertEqual({error, expired}, decode(encode(Term, Secret), Secret, 0)),
   % forged data
+  ?assertEqual({error, forged}, decode(Enc, Secret, 2)),
   ?assertEqual({error, forged}, decode(<<"1">>, Secret, 1)),
   ?assertEqual({error, forged}, decode(<<"0", Enc/binary>>, Secret, 1)),
-  ?assertEqual({error, forged}, decode(<<Enc/binary, "1">>, Secret, 1)).
+  ?assertEqual({error, forged}, decode(<<Enc/binary, "1">>, Secret, 1)),
+  % expired data
+  Enc2 = encode(Term, Secret, 1),
+  timer:sleep(2000),
+  ?assertEqual({error, expired}, decode(Enc2, Secret, 1)).
 
 encode64_test() ->
   Term = {a, b, c, [d, "e", <<"foo">>]},
   Secret = <<"TopSecRet">>,
   ?assertEqual({error, forged}, decode_base64(undefined, a, b)),
-  ?assertEqual({ok, Term}, decode_base64(encode_base64(Term, Secret), Secret, 1)),
-  ?assertEqual({error, expired}, decode_base64(encode_base64(Term, Secret), Secret, 0)).
+  ?assertEqual({ok, Term}, decode_base64(encode_base64(Term, Secret, 1), Secret, 1)).
 
 decode64_test() ->
   ?assertEqual({error, forged}, decode_base64(<<"%3A">>, a, b)).
