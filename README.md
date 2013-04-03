@@ -9,23 +9,28 @@ Usage
 A typical use case is to provide means to keep secrets put in public domain, e.g. secure cookies.
 
 ```erlang
+% generate a token
 Term = {this, is, an, [erlang, <<"term">>]}.
+Cookie = termit:encode_base64(Term, <<"cekpet">>).
+
+% token is ok
+{ok, Term} = termit:decode_base64(Cookie, <<"cekpet">>).
+
+% check whether token is not forged
+{error, forged} = termit:decode_base64(<<Cookie/binary, "1">>, <<"cekpet">>).
+{error, forged} = termit:decode_base64(Cookie, <<"secret">>).
+{error, forged} = termit:decode_base64(undefined, <<"cekpet">>).
+
+% generate expiring token
+Term = {this, is, another, [erlang, <<"term">>]}.
 % time-to-live is 10 seconds =:= secret valid no more than 10 seconds
 Cookie = termit:encode_base64(Term, <<"cekpet">>, 10).
 
-% secret is alive
-{ok, Term} = termit:decode_base64(Cookie, <<"cekpet">>, 10).
-
-% secret's time-to-live must fit
-{error, forged} = termit:decode_base64(Cookie, <<"cekpet">>, 11).
+% secret is ok within 10 seconds interval
+{ok, Term} = termit:decode_base64(Cookie, <<"cekpet">>).
 
 % after 10 seconds elapsed
-{error, expired} = termit:decode_base64(Cookie, <<"cekpet">>, 10).
-
-% check whether secret was not forged
-{error, forged} = termit:decode_base64(<<Cookie/binary, "1">>, <<"cekpet">>, 10).
-{error, forged} = termit:decode_base64(Cookie, <<"secret">>, 10).
-{error, forged} = termit:decode_base64(undefined, <<"cekpet">>, 10).
+{error, expired} = termit:decode_base64(Cookie, <<"cekpet">>).
 ```
 
 [License](termit/blob/master/LICENSE.txt)
