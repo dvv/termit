@@ -28,14 +28,15 @@
 -spec encode(Term :: any(), Secret :: binary()) -> Cipher :: binary().
 encode(Term, Secret) ->
   Key = key(Secret),
-  Enc = encrypt(term_to_binary(Term), Key),
+  Enc = encrypt(term_to_binary(Term, [compressed, {minor_version, 1}]), Key),
   << (sign(<< Key/binary, Enc/binary >>, Key))/binary, Enc/binary >>.
 
 -spec encode(Term :: any(), Secret :: binary(),
     Ttl :: non_neg_integer()) -> Cipher :: binary().
 encode(Term, Secret, Ttl) ->
   Key = key(Secret),
-  Enc = encrypt(term_to_binary(expiring(Term, Ttl)), Key),
+  Enc = encrypt(term_to_binary(expiring(Term, Ttl),
+        [compressed, {minor_version, 1}]), Key),
   << (sign(<< Key/binary, Enc/binary >>, Key))/binary, Enc/binary >>.
 
 %%
