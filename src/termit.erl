@@ -25,14 +25,22 @@
 %% -----------------------------------------------------------------------------
 %%
 
--spec encode(Term :: any(), Secret :: binary()) -> Cipher :: binary().
+-spec encode(
+    Term :: any(),
+    Secret :: binary()) ->
+  Cipher :: binary().
+
 encode(Term, Secret) ->
   Key = key(Secret),
   Enc = encrypt(term_to_binary(Term, [compressed, {minor_version, 1}]), Key),
   << (sign(<< Key/binary, Enc/binary >>, Key))/binary, Enc/binary >>.
 
--spec encode(Term :: any(), Secret :: binary(),
-    Ttl :: non_neg_integer()) -> Cipher :: binary().
+-spec encode(
+    Term :: any(),
+    Secret :: binary(),
+    Ttl :: non_neg_integer()) ->
+  Cipher :: binary().
+
 encode(Term, Secret, Ttl) ->
   Key = key(Secret),
   Enc = encrypt(term_to_binary(expiring(Term, Ttl),
@@ -46,8 +54,13 @@ encode(Term, Secret, Ttl) ->
 %% -----------------------------------------------------------------------------
 %%
 
--spec decode(Cipher :: binary(), Secret :: binary()) ->
-  {ok, Term :: any()} | {error, forged} | {error, badarg}.
+-spec decode(
+    Cipher :: binary(),
+    Secret :: binary()) ->
+  {ok, Term :: any()} |
+  {error, forged} |
+  {error, badarg}.
+
 decode(<< Sig:20/binary, Enc/binary >>, Secret) ->
   Key = key(Secret),
   % NB constant time signature verification
@@ -67,20 +80,35 @@ decode(<< Sig:20/binary, Enc/binary >>, Secret) ->
 decode(Bin, _) when is_binary(Bin) ->
   {error, forged}.
 
--spec key(Secret :: binary()) -> MAC16 :: binary().
+-spec key(
+    Secret :: binary()) ->
+  MAC16 :: binary().
+
 key(Secret) ->
   crypto:md5_mac(Secret, []).
 
--spec sign(Data :: binary(), Secret :: binary()) -> MAC20 :: binary().
+-spec sign(
+    Data :: binary(),
+    Secret :: binary()) ->
+  MAC20 :: binary().
+
 sign(Data, Key) ->
   crypto:sha_mac(Key, Data).
 
--spec encrypt(Data :: binary(), Key :: binary()) -> Cipher :: binary().
+-spec encrypt(
+    Data :: binary(),
+    Key :: binary()) ->
+  Cipher :: binary().
+
 encrypt(Data, Key) ->
   IV = crypto:rand_bytes(16),
   << IV/binary, (crypto:aes_cfb_128_encrypt(Key, IV, Data))/binary >>.
 
--spec uncrypt(Cipher :: binary(), Key :: binary()) -> Uncrypted :: binary().
+-spec uncrypt(
+    Cipher :: binary(),
+    Key :: binary()) ->
+  Uncrypted :: binary().
+
 uncrypt(<< IV:16/binary, Data/binary >>, Key) ->
   crypto:aes_cfb_128_decrypt(Key, IV, Data).
 
@@ -90,7 +118,12 @@ uncrypt(<< IV:16/binary, Data/binary >>, Key) ->
 %% -----------------------------------------------------------------------------
 %%
 
--spec equal(A :: binary(), B :: binary()) -> true | false.
+-spec equal(
+    A :: binary(),
+    B :: binary()) ->
+  true |
+  false.
+
 equal(A, B) ->
   equal(A, B, 0).
 
@@ -130,7 +163,10 @@ decode_base64(Bin, Secret) when is_binary(Bin) ->
 %% -----------------------------------------------------------------------------
 %%
 
--spec timestamp(Delta :: integer()) -> non_neg_integer().
+-spec timestamp(
+    Delta :: integer()) ->
+  non_neg_integer().
+
 timestamp(Delta) when is_integer(Delta) ->
   {MegaSecs, Secs, _} = os:timestamp(),
   MegaSecs * 1000000 + Secs + Delta.
