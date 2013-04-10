@@ -31,8 +31,10 @@
   Cipher :: binary().
 
 encode(Term, Secret) ->
+  IV = crypto:rand_bytes(16),
   Key = key(Secret),
-  Enc = encrypt(term_to_binary(Term, [compressed, {minor_version, 1}]), Key),
+  Enc = encrypt(term_to_binary(Term,
+        [compressed, {minor_version, 1}]), Key, IV),
   << (sign(<< Enc/binary >>, Key))/binary, Enc/binary >>.
 
 -spec encode(
@@ -42,9 +44,10 @@ encode(Term, Secret) ->
   Cipher :: binary().
 
 encode(Term, Secret, Ttl) ->
+  IV = crypto:rand_bytes(16),
   Key = key(Secret),
   Enc = encrypt(term_to_binary(expiring(Term, Ttl),
-        [compressed, {minor_version, 1}]), Key),
+        [compressed, {minor_version, 1}]), Key, IV),
   << (sign(<< Enc/binary >>, Key))/binary, Enc/binary >>.
 
 %%
@@ -97,11 +100,11 @@ sign(Data, Key) ->
 
 -spec encrypt(
     Data :: binary(),
-    Key :: binary()) ->
+    Key :: binary(),
+    IV :: binary()) ->
   Cipher :: binary().
 
-encrypt(Data, Key) ->
-  IV = crypto:rand_bytes(16),
+encrypt(Data, Key, IV) ->
   << IV/binary, (crypto:aes_cfb_128_encrypt(Key, IV, Data))/binary >>.
 
 -spec uncrypt(
@@ -192,14 +195,19 @@ check_expired(Term) ->
 -include_lib("eunit/include/eunit.hrl").
 
 encrypt_test() ->
+  IV = crypto:rand_bytes(16),
   Secret = crypto:md5_mac(<<"Make It Elegant">>, []),
   << Secret15:15/binary, _/binary >> = Secret,
   Bin = <<"Transire Benefaciendo">>,
-  ?assertEqual(Bin, uncrypt(encrypt(Bin, Secret), Secret)),
-  ?assertNotEqual(Bin, uncrypt(encrypt(Bin, Secret), <<Secret15/binary, "1">>)),
-  ?assertNotEqual(Bin, uncrypt(encrypt(Bin, Secret), <<"0", Secret15/binary>>)),
-  ?assertNotEqual(Bin, uncrypt(encrypt(Bin, <<Secret15/binary, "1">>), Secret)),
-  ?assertNotEqual(Bin, uncrypt(encrypt(Bin, <<"0", Secret15/binary>>), Secret)).
+  ?assertEqual(Bin, uncrypt(encrypt(Bin, Secret, IV), Secret)),
+  ?assertNotEqual(Bin,
+      uncrypt(encrypt(Bin, Secret, IV), <<Secret15/binary, "1">>)),
+  ?assertNotEqual(Bin,
+      uncrypt(encrypt(Bin, Secret, IV), <<"0", Secret15/binary>>)),
+  ?assertNotEqual(Bin,
+      uncrypt(encrypt(Bin, <<Secret15/binary, "1">>, IV), Secret)),
+  ?assertNotEqual(Bin,
+      uncrypt(encrypt(Bin, <<"0", Secret15/binary>>, IV), Secret)).
 
 smoke_test() ->
   Term = {a, b, c, [d, "e", <<"foo">>]},
