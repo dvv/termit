@@ -10,12 +10,13 @@
 -author('Vladimir Dronnikov <dronnikov@gmail.com>').
 
 -export([
+    check_expired/1,
     decode/2,
     decode_base64/2,
     encode/2,
-    encode/3,
     encode_base64/2,
-    encode_base64/3
+    expires_by/2,
+    expiring/2
   ]).
 
 %%
@@ -31,24 +32,11 @@
   Cipher :: binary().
 
 encode(Term, Secret) ->
-  IV = crypto:rand_bytes(16),
   Key = key(Secret),
-  Enc = encrypt(term_to_binary(Term,
-        [compressed, {minor_version, 1}]), Key, IV),
+  Enc = encrypt(term_to_binary(Term, [compressed, {minor_version, 1}]),
+                Key, crypto:rand_bytes(16)),
   << (sign(<< Enc/binary >>, Key))/binary, Enc/binary >>.
 
--spec encode(
-    Term :: any(),
-    Secret :: binary(),
-    Ttl :: non_neg_integer()) ->
-  Cipher :: binary().
-
-encode(Term, Secret, Ttl) ->
-  IV = crypto:rand_bytes(16),
-  Key = key(Secret),
-  Enc = encrypt(term_to_binary(expiring(Term, Ttl),
-        [compressed, {minor_version, 1}]), Key, IV),
-  << (sign(<< Enc/binary >>, Key))/binary, Enc/binary >>.
 
 %%
 %% -----------------------------------------------------------------------------
@@ -70,8 +58,8 @@ decode(<< Sig:20/binary, Enc/binary >>, Secret) ->
   case equal(Sig, sign(<< Enc/binary >>, Key)) of
     true ->
       % deserialize
-      try check_expired(binary_to_term(uncrypt(Enc, Key), [safe])) of
-        Any -> Any
+      try binary_to_term(uncrypt(Enc, Key), [safe]) of
+        Term -> {ok, Term}
       catch _:_ ->
         {error, badarg}
       end;
@@ -146,9 +134,6 @@ equal(_As, _Bs, _Acc) ->
 encode_base64(Term, Secret) ->
   base64:encode(encode(Term, Secret)).
 
-encode_base64(Term, Secret, Ttl) ->
-  base64:encode(encode(Term, Secret, Ttl)).
-
 decode_base64(undefined, _) ->
   {error, forged};
 
@@ -175,15 +160,21 @@ timestamp(Delta) when is_integer(Delta) ->
   MegaSecs * 1000000 + Secs + Delta.
 
 expiring(Term, Ttl) ->
-  {expires, timestamp(Ttl), Term}.
+  expires_by(Term, timestamp(Ttl)).
 
-check_expired({expires, ExpiresAt, Term}) ->
-  case ExpiresAt > timestamp(0) of
-    true -> {ok, Term};
+expires_by(Term, When) ->
+  {expires, When, Term}.
+
+check_expired(Term) ->
+  check_expired(Term, timestamp(0)).
+
+check_expired({expires, ExpiresAt, Data}, Now) ->
+  case ExpiresAt > Now of
+    true -> {ok, Data};
     false -> {error, expired}
   end;
-check_expired(Term) ->
-  {ok, Term}.
+check_expired(_, _) ->
+  {error, badarg}.
 
 %%
 %% -----------------------------------------------------------------------------
@@ -222,20 +213,20 @@ smoke_test() ->
 expiry_test() ->
   Term = {a, b, c, [d, "e", <<"foo">>]},
   Secret = <<"TopSecRet">>,
-  Enc = encode(Term, Secret, 1),
-  ?assertEqual({ok, Term}, decode(Enc, Secret)),
-  % forged data
-  ?assertEqual({error, forged}, decode(<<"1">>, Secret)),
-  ?assertEqual({error, forged}, decode(<<"0", Enc/binary>>, Secret)),
-  ?assertEqual({error, forged}, decode(<<Enc/binary, "1">>, Secret)),
+  % check_expired returns error when term is not expiring
+  ?assertEqual({error, badarg}, check_expired(Term)),
+  % encode an expiring term
+  Enc = encode(expiring(Term, 10), Secret),
+  % decode it back
+  {ok, Dec} = decode(Enc, Secret),
+  % ensure term is not expired
+  ?assertEqual({ok, Term}, check_expired(Dec)),
   % wait until it expires
-  timer:sleep(2000),
-  ?assertEqual({error, expired}, decode(Enc, Secret)).
+  ?assertEqual({error, expired}, check_expired(Dec, timestamp(11))).
 
 encode64_test() ->
   Term = {a, b, c, [d, "e", <<"foo">>]},
   Secret = <<"TopSecRet">>,
-
   ?assertEqual({error, forged}, decode_base64(undefined, a)),
   ?assertEqual({ok, Term}, decode_base64(encode_base64(Term, Secret), Secret)).
 

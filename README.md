@@ -24,13 +24,15 @@ Cookie = termit:encode_base64(Term, <<"cekpet">>).
 % generate expiring token
 Term = {this, is, another, [erlang, <<"term">>]}.
 % time-to-live is 10 seconds =:= secret valid no more than 10 seconds
-Cookie = termit:encode_base64(Term, <<"cekpet">>, 10).
+Cookie = termit:encode_base64(termit:expiring(Term, 10), <<"cekpet">>).
 
 % secret is ok within 10 seconds interval
-{ok, Term} = termit:decode_base64(Cookie, <<"cekpet">>).
+{ok, Decoded} = termit:decode_base64(Cookie, <<"cekpet">>).
+{ok, Term} = termit:check_expired(Decoded).
 
 % after 10 seconds elapsed
-{error, expired} = termit:decode_base64(Cookie, <<"cekpet">>).
+{ok, Decoded} = termit:decode_base64(Cookie, <<"cekpet">>).
+{error, expired} = termit:check_expired(Decoded).
 ```
 
 [License](termit/blob/master/LICENSE.txt)
