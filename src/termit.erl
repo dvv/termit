@@ -77,12 +77,10 @@ sign(Data, Key) ->
 -spec encrypt(Data :: binary(), Key :: binary()) -> Cipher :: binary().
 encrypt(Data, Key) ->
   IV = crypto:rand_bytes(16),
-  % @todo pad up to 16 octets and use CBC mode
   << IV/binary, (crypto:aes_cfb_128_encrypt(Key, IV, Data))/binary >>.
 
 -spec uncrypt(Cipher :: binary(), Key :: binary()) -> Uncrypted :: binary().
 uncrypt(<< IV:16/binary, Data/binary >>, Key) ->
-  % @todo pad up to 16 octets and use CBC mode
   crypto:aes_cfb_128_decrypt(Key, IV, Data).
 
 %%
