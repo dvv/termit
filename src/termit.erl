@@ -33,7 +33,7 @@
 encode(Term, Secret) ->
   Key = key(Secret),
   Enc = encrypt(term_to_binary(Term, [compressed, {minor_version, 1}]), Key),
-  << (sign(<< Key/binary, Enc/binary >>, Key))/binary, Enc/binary >>.
+  << (sign(<< Enc/binary >>, Key))/binary, Enc/binary >>.
 
 -spec encode(
     Term :: any(),
@@ -45,7 +45,7 @@ encode(Term, Secret, Ttl) ->
   Key = key(Secret),
   Enc = encrypt(term_to_binary(expiring(Term, Ttl),
         [compressed, {minor_version, 1}]), Key),
-  << (sign(<< Key/binary, Enc/binary >>, Key))/binary, Enc/binary >>.
+  << (sign(<< Enc/binary >>, Key))/binary, Enc/binary >>.
 
 %%
 %% -----------------------------------------------------------------------------
@@ -64,7 +64,7 @@ encode(Term, Secret, Ttl) ->
 decode(<< Sig:20/binary, Enc/binary >>, Secret) ->
   Key = key(Secret),
   % NB constant time signature verification
-  case equal(Sig, sign(<< Key/binary, Enc/binary >>, Key)) of
+  case equal(Sig, sign(<< Enc/binary >>, Key)) of
     true ->
       % deserialize
       try check_expired(binary_to_term(uncrypt(Enc, Key), [safe])) of
