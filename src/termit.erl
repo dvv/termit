@@ -16,7 +16,9 @@
     encode/2,
     encode_base64/2,
     expires_by/2,
-    expiring/2
+    expiring/2,
+    issue_token/3,
+    verify_token/2
   ]).
 
 %%
@@ -105,7 +107,7 @@ uncrypt(<< IV:16/binary, Data/binary >>, Key) ->
 
 %%
 %% -----------------------------------------------------------------------------
-%% @doc 'Constant' time =:= operator for binaries, to mitigate timing attacks.
+%% 'Constant' time =:= operator for binaries, to mitigate timing attacks
 %% -----------------------------------------------------------------------------
 %%
 
@@ -178,6 +180,35 @@ check_expired(_, _) ->
 
 %%
 %% -----------------------------------------------------------------------------
+%% Token helpers
+%% -----------------------------------------------------------------------------
+%%
+
+-spec issue_token(
+    Term :: any(),
+    Secret :: binary(),
+    Ttl :: non_neg_integer()) ->
+  Token :: binary().
+
+issue_token(Term, Secret, Ttl) ->
+  encode_base64(expiring(Term, Ttl), Secret).
+
+-spec verify_token(
+    Token :: binary(),
+    Secret :: binary()) ->
+  {ok, Term :: any()} |
+  {error, forged} |  % token forged
+  {error, badarg} |  % token not created with issue_token/3
+  {error, expired}.  % token no longer valid
+
+verify_token(Token, Secret) ->
+  case decode_base64(Token, Secret) of
+    {ok, Decoded} -> check_expired(Decoded);
+    Error -> Error
+  end.
+
+%%
+%% -----------------------------------------------------------------------------
 %% Some unit tests
 %% -----------------------------------------------------------------------------
 %%
@@ -232,5 +263,15 @@ encode64_test() ->
 
 decode64_test() ->
   ?assertEqual({error, forged}, decode_base64(<<"%3A">>, a)).
+
+token_test() ->
+  Term = {a, b, c, [d, "e", <<"foo">>]},
+  Secret = <<"TopSecRet">>,
+  ?assertEqual({ok, Term},
+      verify_token(issue_token(Term, Secret, 10), Secret)),
+  ?assertEqual({error, forged},
+      verify_token(issue_token(Term, Secret, 10), << Secret/binary, "1" >>)),
+  ?assertEqual({error, badarg},
+      verify_token(encode_base64(Term, Secret), Secret)).
 
 -endif.
