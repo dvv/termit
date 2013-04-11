@@ -37,7 +37,7 @@ encode(Term, Secret) ->
   Key = key(Secret),
   Enc = encrypt(term_to_binary(Term, [compressed, {minor_version, 1}]),
                 Key, crypto:rand_bytes(16)),
-  << (sign(<< Enc/binary >>, Key))/binary, Enc/binary >>.
+  << (sign(Enc, Key))/binary, Enc/binary >>.
 
 
 %%
@@ -57,7 +57,7 @@ encode(Term, Secret) ->
 decode(<< Sig:20/binary, Enc/binary >>, Secret) ->
   Key = key(Secret),
   % NB constant time signature verification
-  case equal(Sig, sign(<< Enc/binary >>, Key)) of
+  case equal(Sig, sign(Enc, Key)) of
     true ->
       % deserialize
       try binary_to_term(uncrypt(Enc, Key), [safe]) of

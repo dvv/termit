@@ -33,7 +33,17 @@ Cookie = termit:encode_base64(termit:expiring(Term, 10), <<"cekpet">>).
 % after 10 seconds elapsed
 {ok, Decoded} = termit:decode_base64(Cookie, <<"cekpet">>).
 {error, expired} = termit:check_expired(Decoded).
+
+% shortcuts for expiring security tokens, e.g. OAuth2 bearer tokens
+Token = termit:issue_token([{user, <<"dvv">>}, {scope, <<"admin.*">>}], <<"ThanksBob!">>, 24 * 60 * 60).
+{ok, Data} = termit:verify_token(Token, <<"ThanksBob!">>).
+{error, forged} = termit:verify_token(Token, <<"ThanksBob?">>).
 ```
+
+Thanks
+--------------
+
+[Bob Ippolito](https://github.com/etrepum) for invaluable assistance in improving the library usability.
 
 [License](termit/blob/master/LICENSE.txt)
 -------
