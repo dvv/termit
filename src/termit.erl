@@ -134,13 +134,13 @@ equal(_As, _Bs, _Acc) ->
 %%
 
 encode_base64(Term, Secret) ->
-  base64:encode(encode(Term, Secret)).
+  base64url:encode(encode(Term, Secret)).
 
 decode_base64(undefined, _) ->
   {error, forged};
 
 decode_base64(Bin, Secret) when is_binary(Bin) ->
-  try base64:decode(Bin) of
+  try base64url:decode(Bin) of
     Decoded ->
       decode(Decoded, Secret)
   catch _:_ ->
