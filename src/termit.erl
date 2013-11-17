@@ -17,6 +17,7 @@
     encode_base64/2,
     expires_by/2,
     expiring/2,
+    issue_token/2,
     issue_token/3,
     verify_token/2
   ]).
@@ -231,6 +232,15 @@ check_expired(_, _) ->
 issue_token(Term, Secret, Ttl) ->
   encode_base64(expiring(Term, Ttl), Secret).
 
+-spec issue_token(
+    Term :: any(),
+    Secret :: binary()) ->
+ Token :: binary().
+
+issue_token(Term, Secret) ->
+  encode_base64(Term, Secret).
+
+
 -spec verify_token(
     Token :: binary(),
     Secret :: binary()) ->
@@ -241,7 +251,8 @@ issue_token(Term, Secret, Ttl) ->
 
 verify_token(Token, Secret) ->
   case decode_base64(Token, Secret) of
-    {ok, Decoded} -> check_expired(Decoded);
+    {ok, {expires, _ExpiresAt, _Data}=Decoded} -> check_expired(Decoded);
+    {ok, Decoded} -> {ok, Decoded};
     Error -> Error
   end.
 
@@ -309,7 +320,9 @@ token_test() ->
       verify_token(issue_token(Term, Secret, 10), Secret)),
   ?assertEqual({error, forged},
       verify_token(issue_token(Term, Secret, 10), << Secret/binary, "1" >>)),
-  ?assertEqual({error, badarg},
-      verify_token(encode_base64(Term, Secret), Secret)).
+  ?assertEqual({ok, Term},
+      verify_token(encode_base64(Term, Secret), Secret)),
+  ?assertEqual({ok, Term},
+      verify_token(issue_token(Term, Secret), Secret)).
 
 -endif.
