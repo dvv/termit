@@ -38,6 +38,13 @@ Cookie = termit:encode_base64(termit:expiring(Term, 10), <<"cekpet">>).
 Token = termit:issue_token([{user, <<"dvv">>}, {scope, <<"admin.*">>}], <<"ThanksBob!">>, 24 * 60 * 60).
 {ok, Data} = termit:verify_token(Token, <<"ThanksBob!">>).
 {error, forged} = termit:verify_token(Token, <<"ThanksBob?">>).
+
+
+% generate non expiring token
+Term = {a, b, c, [d, "e", <<"foo">>]},
+Secret = <<"TopSecRet">>,
+Token = termit:issue_token(Term, Secret),
+{ok, Term} = verify_token(Token, Secret).
 ```
 
 Thanks
