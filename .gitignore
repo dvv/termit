@@ -2,6 +2,7 @@ ebin
 deps
 .eunit
 .ct
+.rebar
 logs
 test/*.beam
 erl_crash.dump

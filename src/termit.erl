@@ -37,7 +37,7 @@
 encode(Term, Secret) ->
   Key = key(Secret),
   Enc = encrypt(term_to_binary(Term, [compressed, {minor_version, 1}]),
-                Key, crypto:rand_bytes(16)),
+                Key, rand_bytes(16)),
   << (sign(Enc, Key))/binary, Enc/binary >>.
 
 
@@ -173,13 +173,12 @@ equal(_As, _Bs, _Acc) ->
 %%
 
 encode_base64(Term, Secret) ->
-  base64url:encode(encode(Term, Secret)).
+  termit_base64url:encode(encode(Term, Secret)).
 
 decode_base64(undefined, _) ->
   {error, forged};
-
 decode_base64(Bin, Secret) when is_binary(Bin) ->
-  try base64url:decode(Bin) of
+  try termit_base64url:decode(Bin) of
     Decoded ->
       decode(Decoded, Secret)
   catch _:_ ->
@@ -194,7 +193,7 @@ decode_base64(Bin, Secret) when is_binary(Bin) ->
 
 -spec timestamp(
     Delta :: integer()) ->
-  non_neg_integer().
+  integer().
 
 timestamp(Delta) when is_integer(Delta) ->
   {MegaSecs, Secs, _} = os:timestamp(),
@@ -255,6 +254,18 @@ verify_token(Token, Secret) ->
     {ok, Decoded} -> {ok, Decoded};
     Error -> Error
   end.
+
+
+%% @doc Return N random bytes. This falls back to the pseudo random version of rand_uniform
+%% if strong_rand_bytes fails.
+-spec rand_bytes( Length :: pos_integer() ) -> binary().
+rand_bytes(N) when N > 0 ->
+    try
+        crypto:strong_rand_bytes(N)
+    catch
+        error:low_entropy ->
+            list_to_binary([ crypto:rand_uniform(0,256) || _X <- lists:seq(1, N) ])
+    end.
 
 %%
 %% -----------------------------------------------------------------------------
