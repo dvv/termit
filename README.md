@@ -3,6 +3,8 @@ Termit
 
 Library for serializing Erlang terms to signed encrypted binaries and reliably deserializing them back.
 
+_N.B. maintenance moved to https://github.com/erlangpack/termit_
+
 Usage
 --------------
 
